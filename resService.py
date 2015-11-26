@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, json, request
 from flask_restful import Api, Resource
 from flask.ext.sqlalchemy import SQLAlchemy
@@ -227,12 +227,55 @@ class ProviderReservated(Resource):
         return "400 Invalid Operation"
 
 
+class ProviderReservatedTF(Resource):
+    def get(self, provider_id):
+        if database_exists(DATABASE) is False:
+            db.create_all()
+        stock_provider = Stock.query.filter_by(providerID=provider_id).all()
+        timestamp_now = int(time.time())
+        for item in stock_provider:
+            reserv = Reservations.query.filter_by(itemID=item.itemID).all()
+            count = 0
+            if len(reserv) != 0:
+                for item2 in reserv:
+                    if item2.timestamp > timestamp_now:
+                        count += 1
+        return {"reservated": [{'total': count}]}
+
+    def post(self):
+        return "400 Invalid Operation"
+
+
+class ProviderReservatedTFDay(Resource):
+    def get(self, provider_id):
+        if database_exists(DATABASE) is False:
+            db.create_all()
+        in_data = request.get_json(force=True)
+        stock_provider = Stock.query.filter_by(providerID=provider_id).all()
+        l2 = []
+        dater = datetime.datetime.strptime(in_data['date'], "%d/%m/%Y")
+        timestamp_begin = int(time.mktime(dater.timetuple()))
+        timestamp_end = int(time.mktime((dater + datetime.timedelta(1)).timetuple()))
+        for item in stock_provider:
+            reserv = Reservations.query.filter_by(itemID=item.itemID).all()
+            if len(reserv) != 0:
+                for item2 in reserv:
+                    if (item2.timestamp > timestamp_begin) and (item2.timestamp < timestamp_end):
+                        l2.append({'itemID': item.itemID, 'itemName': item.itemName, 'quantity': item2.quantity,
+                                   'username': item2.username})
+        return {"reservated": l2}
+
+    def post(self):
+        return "400 Invalid Operation"
+
+
 class GetCaldavFile(Resource):
     def get(self, reservation_id):
         if database_exists(DATABASE) is False:
             db.create_all()
         reservation = Reservations.query.filter_by(reservationID=reservation_id).first()
-        return json.dumps({'url': 'http://ogaviao.ddns.net/%s/meals.ics/%d.ics' % (reservation.username, reservation_id)})
+        return json.dumps(
+            {'url': 'http://ogaviao.ddns.net/%s/meals.ics/%d.ics' % (reservation.username, reservation_id)})
 
 
 class CheckStock(Resource):
@@ -263,6 +306,8 @@ api.add_resource(AllStock, '/allstock')
 api.add_resource(UserReservations, '/userresv/<username>')
 api.add_resource(ProviderStock, '/providerstock/<provider_name>')
 api.add_resource(ProviderReservated, '/reservationsnumber/<provider_name>')
+api.add_resource(ProviderReservatedTF, '/reservtotal/<provider_id>')
+api.add_resource(ProviderReservatedTFDay, '/dayreserv/<provider_id>')
 api.add_resource(GetCaldavFile, '/getfile/<reservation_id>')
 api.add_resource(CheckStock, '/stock/<item_id>')
 api.add_resource(ResetDatabase, '/resetdb')

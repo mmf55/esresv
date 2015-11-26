@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from flask import Flask, json, request
 from flask_restful import Api, Resource
@@ -28,24 +29,24 @@ class Reservations(db.Model):
     reservationID = db.Column(db.Integer, primary_key=True)
     itemID = db.Column(db.Integer, db.ForeignKey('stock.itemID'))
     quantity = db.Column(db.Integer)
-    date_time = db.Column(db.DateTime)
+    timestamp = db.Column(db.BigInteger)
     clientID = db.Column(db.Integer)
     username = db.Column(db.Integer)
     binary_data = db.Column(db.LargeBinary)
 
-    def __init__(self, itemID, quantity, clientID, username, date_time=None, binary_data=None):
+    def __init__(self, itemID, quantity, clientID, username, timestamp=None, binary_data=None):
         self.itemID = itemID
         self.quantity = quantity
-        if date_time is None:
-            self.date_time = datetime.now()
-        self.date_time = date_time
+        if timestamp is None:
+            self.timestamp = int(time.time())
+        self.timestamp = timestamp
         self.clientID = clientID
         self.username = username
         self.binary_data = binary_data
 
     def to_json(self):
         return dict(reservationID=self.reservationID, itemID=self.itemID, quantity=self.quantity,
-                    date_time=self.date_time, clientID=self.clientID, username=self.username)
+                    timestamp=self.timestamp, clientID=self.clientID, username=self.username)
 
 
 class Stock(db.Model):
@@ -88,7 +89,7 @@ class AllReservations(Resource):
             if str(item_id) not in res:
                 res[str(item_id)] = list()
             res[str(item_id)].append({'clientID': item['clientID'],
-                                      'quantity': item['quantity'], 'timestamp': item['date_time']})
+                                      'quantity': item['quantity'], 'timestamp': item['timestamp']})
         return json.dumps({'allreservations': res})
 
     def post(self):
@@ -109,7 +110,7 @@ class DoReservation(Resource):
                            in_data['quantity'],
                            in_data['clientID'],
                            in_data['username'],
-                           datetime.fromtimestamp(in_data['timestamp']))
+                           in_data['timestamp'])
 
         db.session.add(res)
         stock.stockQuantity -= in_data['quantity']
@@ -181,9 +182,9 @@ class UserReservations(Resource):
             db.create_all()
         l2 = []
         for r, s in db.session.query(Reservations, Stock).filter(Stock.itemID == Reservations.itemID).all():
-            l2.append({'reservationID': r.reservationID,
-                       'itemID': r.itemID,
+            l2.append({'itemID': r.itemID,
                        'itemName': s.itemName,
+                       'timestamp': r.timestamp,
                        'provider': s.provider_name,
                        'quantity': r.quantity})
         return {"reservations": l2}
@@ -202,6 +203,25 @@ class ProviderStock(Resource):
         for item in l:
             l2.append({'itemID': item['itemID'], 'itemName': item['itemName'], 'itemQuantity': item['stockQuantity']})
         return {"stock": l2}
+
+    def post(self):
+        return "400 Invalid Operation"
+
+
+class ProviderReservated(Resource):
+    def get(self, provider_name):
+        if database_exists(DATABASE) is False:
+            db.create_all()
+        stock_provider = Stock.query.filter_by(provider_name=provider_name).all()
+        l2 = []
+        for item in stock_provider:
+            reserv = Reservations.query.filter_by(itemID=item.itemID).all()
+            if len(reserv) != 0:
+                count = 0
+                for item2 in reserv:
+                    count += item2.quantity
+                l2.append({'itemID': item.itemID, 'itemName': item.itemName, 'quantity': count})
+        return {"reservated": l2}
 
     def post(self):
         return "400 Invalid Operation"
@@ -242,6 +262,7 @@ api.add_resource(ReplenishStock, '/replenishstock')
 api.add_resource(AllStock, '/allstock')
 api.add_resource(UserReservations, '/userresv/<username>')
 api.add_resource(ProviderStock, '/providerstock/<provider_name>')
+api.add_resource(ProviderReservated, '/reservationsnumber/<provider_name>')
 api.add_resource(GetCaldavFile, '/getfile/<reservation_id>')
 api.add_resource(CheckStock, '/stock/<item_id>')
 api.add_resource(ResetDatabase, '/resetdb')

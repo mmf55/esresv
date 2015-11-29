@@ -7,25 +7,27 @@ import hashlib
 
 __author__ = 'mfernandes'
 
-DATABASE = '/var/www/escaldav/Specific/db/db.sqlite'
-
 
 class DAVHandler:
+    """
+        Handles the events on the CALDAV server.
+    """
     def __init__(self, url, username, password):
         self.url = url
         self.username = username
         self.password = password
         self.client = caldav.DAVClient(self.url, None, self.username, self.password, None, False)
 
-    def add_calendar(self):
-        principal = self.client.principal()
-        principal.calendar_home_set = self.url + "meals.ics/"
-        cal_id = "default"
-        principal.make_calendar(name="meals.ics", cal_id=cal_id).save()
-
-    def add_event(self, uid, event_name, start_timestamp):
-        # client = caldav.DAVClient(self.url)
-        principal = self.client.principal()
+    def add_event(self, username, uid, event_name, start_timestamp, quantity):
+        """
+        Adds a new event with the given parameters in a given username calendar.
+        :param username: username of the calendar to insert the event.
+        :param uid: UID tha identifies the event in the calendar.
+        :param event_name: Event name.
+        :param start_timestamp: The date where the event are scheduled.
+        :param quantity: The quantity reserved.
+        :return: Keyword 'OK'
+        """
         cal = Calendar()
         cal['version'] = "2.0"
         cal['prodid'] = "//Radicale//NONSGML Radicale Server//EN"
@@ -34,6 +36,7 @@ class DAVHandler:
         event['uid'] = uid
         event['dtstart'] = vDatetime(datetime.fromtimestamp(start_timestamp)).to_ical()
         event['summary'] = event_name
+        event['description'] = 'Quantity: ' + str(quantity)
         event['x-radicale-name'] = str(uid) + '.ics'
 
         cal.add_component(event)
@@ -55,15 +58,43 @@ class DAVHandler:
                    'charset': 'utf-8',
                    'if-none-match': '*'}
 
-        #	headers = {'Content-Type': 'text/calendar', 'charset': 'utf-8'}
-        self.client.put(self.url + str(uid) + '.ics', cal.to_ical(), headers)
-        #        calendars = principal.calendars()
-        #        if len(calendars) == 0:
-        #            print len(calendars)
-        #            self.add_calendar()
-        #	    principal = self.client.principal()
-        #	    calendars = principal.calendars()
-        #	print len(calendars)
-        #        calendar = calendars[0]
-        #        calendar.add_event(cal.to_ical())
+        self.client.put(self.url + username + '/calendar.ics/' + str(uid) + '.ics', cal.to_ical(), headers)
+        return 'OK'
+
+    def update_event(self, username, uid, event_name, start_timestamp, quantity):
+        """
+        Update the info about a specific event on the user calendar.
+        :param username: username of the calendar to insert the event.
+        :param uid: UID tha identifies the event in the calendar.
+        :param event_name: Event name.
+        :param start_timestamp: The date where the event are scheduled.
+        :param quantity: The quantity reserved.
+        :return: Keyword 'OK'
+        """
+        cal = Calendar()
+        cal['version'] = "2.0"
+        cal['prodid'] = "//Radicale//NONSGML Radicale Server//EN"
+
+        event = Event()
+        event['uid'] = uid
+        event['dtstart'] = vDatetime(datetime.fromtimestamp(start_timestamp)).to_ical()
+        event['summary'] = event_name
+        event['description'] = 'Quantity: ' + str(quantity)
+        event['x-radicale-name'] = str(uid) + '.ics'
+
+        cal.add_component(event)
+
+        headers = {'Content-Type': 'text/calendar',
+                   'charset': 'utf-8'}
+        self.client.put(self.url + username + '/calendar.ics/' + str(uid) + '.ics', cal.to_ical(), headers)
+        return 'OK'
+
+    def delete_event(self, username, uid):
+        """
+        Deletes a specific event on the user calendar.
+        :param username: username of the calendar to insert the event.
+        :param uid: UID tha identifies the event in the calendar.
+        :return: Keyword 'OK'
+        """
+        self.client.delete(self.url + username + '/calendar.ics/' + str(uid) + '.ics')
         return 'OK'

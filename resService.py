@@ -159,17 +159,21 @@ class DoReservation(Resource):
         db.session.commit()
 
         reservation = Reservations.query.filter_by(itemID=stock.itemID, clientID=in_data['clientID']).first()
-        dh = DAVHandler("http://127.0.0.1:5190/%s/meals.ics/" % in_data['username'],
+        dh = DAVHandler("http://127.0.0.1:5190/",
                         CALDAV_ADMIN_USER,
                         CALDAV_ADMIN_PASSWD,
                         )
-        dh.add_event(reservation.reservationID, stock.itemName, in_data['timestamp'])
+        dh.add_event(reservation.username,
+                     reservation.reservationID,
+                     stock.itemName,
+                     in_data['timestamp'],
+                     in_data['quantity'])
 
-        dh = DAVHandler("http://127.0.0.1:5190/%s/meals.ics/" % stock.provider_name,
-                        CALDAV_ADMIN_USER,
-                        CALDAV_ADMIN_PASSWD,
-                        )
-        dh.add_event(reservation.reservationID, stock.itemName, in_data['timestamp'])
+        dh.add_event(stock.provider_name,
+                     reservation.reservationID,
+                     stock.itemName,
+                     in_data['timestamp'],
+                     in_data['quantity'])
 
         return {"reservationID": reservation.reservationID}
 
@@ -186,6 +190,7 @@ class UpdateReservation(Resource):
             "timestamp": 1445556339
         }
     """
+
     def post(self, reservation_id):
         if database_exists(DATABASE) is False:
             db.create_all()
@@ -195,22 +200,47 @@ class UpdateReservation(Resource):
         reservation = Reservations.query.filter_by(reservationID=reservation_id).first()
         if reservation is None:
             return "402 Reservation ID is not valid"
+        dh = DAVHandler("http://127.0.0.1:5190/",
+                        CALDAV_ADMIN_USER,
+                        CALDAV_ADMIN_PASSWD,
+                        )
         if in_data['quantity'] > 0:
             stock = Stock.query.filter_by(itemID=reservation.itemID).first()
             if in_data['quantity'] > reservation.quantity:
                 more = in_data['quantity'] - reservation.quantity
                 if more <= stock.stockQuantity:
-                    reservation.quantity += more
+                    reservation.quantity = in_data['quantity']
                     stock.stockQuantity -= more
                 else:
                     return "403 Invalid stock"
             elif in_data['quantity'] < reservation.quantity:
                 less = reservation.quantity - in_data['quantity']
-                reservation.quantity -= less
+                reservation.quantity = in_data['quantity']
                 stock.stockQuantity += less
+
+            dh.update_event(reservation.username,
+                            reservation.reservationID,
+                            stock.itemName,
+                            reservation.timestamp,
+                            in_data['quantity'])
+
+            dh.update_event(stock.provider_name,
+                            reservation.reservationID,
+                            stock.itemName,
+                            reservation.timestamp,
+                            in_data['quantity'])
 
         if in_data['timestamp'] > 0:
             reservation.timestamp = in_data['timestamp']
+            dh.update_event(reservation.username,
+                            reservation.reservationID,
+                            stock.itemName,
+                            in_data['timestamp'],
+                            reservation.quantity)
+            dh.update_event(stock.provider_name,
+                            stock.itemName,
+                            in_data['timestamp'],
+                            reservation.quantity)
         db.session.commit()
         return "200 OK"
 
@@ -222,14 +252,22 @@ class CancelReservation(Resource):
     """
         [GET] Deletes a reservation with a given reservation ID.
     """
+
     def get(self, reservation_id):
         reservation = Reservations.query.filter_by(reservationID=reservation_id).first()
         if reservation is None:
             return "401 Reservation ID is not valid"
+        dh = DAVHandler("http://127.0.0.1:5190/",
+                        CALDAV_ADMIN_USER,
+                        CALDAV_ADMIN_PASSWD,
+                        )
         stock = Stock.query.filter_by(itemID=reservation.itemID).first()
         stock.stockQuantity += reservation.quantity
         db.session.delete(reservation)
         db.session.commit()
+
+        dh.delete_event(reservation.username, reservation.reservationID)
+        dh.delete_event(stock.provider_name, reservation.reservationID)
         return "200 OK"
 
     def post(self):
@@ -334,7 +372,6 @@ class UserReservations(Resource):
                     "itemID": 8,
                     "itemName": "peixe",
                     "timestamp": 123452356343,
-                    "provider": "dave1",
                     "quantity": 2
                 },
                 {
@@ -342,7 +379,6 @@ class UserReservations(Resource):
                     "itemID": 8,
                     "itemName": "peixe",
                     "timestamp": 123452356343,
-                    "provider": "dave1",
                     "quantity": 2
                 }
             ]
@@ -353,12 +389,12 @@ class UserReservations(Resource):
         if database_exists(DATABASE) is False:
             db.create_all()
         l2 = []
-        for r, s in db.session.query(Reservations, Stock).filter(Stock.itemID == Reservations.itemID).all():
+        for r, s in db.session.query(Reservations, Stock).filter(Stock.itemID == Reservations.itemID,
+                                                                 Reservations.username == username).all():
             l2.append({'reservationID': r.reservationID,
                        'itemID': r.itemID,
                        'itemName': s.itemName,
                        'timestamp': r.timestamp,
-                       'provider': s.provider_name,
                        'quantity': r.quantity})
         return {"reservations": l2}
 
@@ -564,6 +600,7 @@ class GetCaldavFile(Resource):
         event['uid'] = reservation.reservationID
         event['dtstart'] = vDatetime(datetime.fromtimestamp(reservation.timestamp)).to_ical()
         event['summary'] = stock.itemName
+        event['description'] = 'Quantity: ' + str(reservation.quantity)
         event['x-radicale-name'] = str(reservation.reservationID) + '.ics'
         cal.add_component(event)
 

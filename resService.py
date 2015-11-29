@@ -218,7 +218,7 @@ class UpdateReservation(Resource):
         return "400 Invalid Operation"
 
 
-class DeleteReservation(Resource):
+class CancelReservation(Resource):
     """
         [GET] Deletes a reservation with a given reservation ID.
     """
@@ -593,7 +593,7 @@ class ResetDatabase(Resource):
 api.add_resource(AllReservations, '/allreservations')
 api.add_resource(DoReservation, '/doreservation')
 api.add_resource(UpdateReservation, '/updatereserv/<reservation_id>')
-api.add_resource(DeleteReservation, '/deletereserv/<reservation_id>')
+api.add_resource(CancelReservation, '/cancelreserv/<reservation_id>')
 api.add_resource(ReplenishStock, '/replenishstock')
 api.add_resource(AllStock, '/allstock')
 api.add_resource(UserReservations, '/userresv/<username>')

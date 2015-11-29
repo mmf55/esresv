@@ -330,6 +330,7 @@ class UserReservations(Resource):
         {
             "reservations": [
                 {
+                    "reservationID": 12
                     "itemID": 8,
                     "itemName": "peixe",
                     "timestamp": 123452356343,
@@ -337,6 +338,7 @@ class UserReservations(Resource):
                     "quantity": 2
                 },
                 {
+                    "reservationID": 123
                     "itemID": 8,
                     "itemName": "peixe",
                     "timestamp": 123452356343,
@@ -352,7 +354,8 @@ class UserReservations(Resource):
             db.create_all()
         l2 = []
         for r, s in db.session.query(Reservations, Stock).filter(Stock.itemID == Reservations.itemID).all():
-            l2.append({'itemID': r.itemID,
+            l2.append({'reservationID': r.reservationID,
+                       'itemID': r.itemID,
                        'itemName': s.itemName,
                        'timestamp': r.timestamp,
                        'provider': s.provider_name,

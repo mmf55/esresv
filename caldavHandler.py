@@ -53,7 +53,7 @@ class DAVHandler:
         # END:VEVENT
         # END:VCALENDAR
         # """
-        print cal.to_ical
+        print cal.to_ical()
         headers = {'Content-Type': 'text/calendar',
                    'charset': 'utf-8',
                    'if-none-match': '*'}

@@ -6,6 +6,7 @@ from flask_restful import Api, Resource
 from flask.ext.sqlalchemy import SQLAlchemy
 from sqlalchemy_utils import database_exists
 from caldavHandler import DAVHandler
+from flasgger import Swagger
 
 __author__ = 'mfernandes'
 
@@ -16,10 +17,45 @@ CALDAV_ADMIN_PASSWD = 'FZiFFEE1Cc6FXtC8M4bjekrtbqLXyjeM'
 
 app = Flask(__name__)
 
+app.config['SWAGGER'] = {
+    "swagger_version": "2.0",
+    # headers are optional, the following are default
+    # "headers": [
+    #     ('Access-Control-Allow-Origin', '*'),
+    #     ('Access-Control-Allow-Headers', "Authorization, Content-Type"),
+    #     ('Access-Control-Expose-Headers', "Authorization"),
+    #     ('Access-Control-Allow-Methods', "GET, POST, PUT, DELETE, OPTIONS"),
+    #     ('Access-Control-Allow-Credentials', "true"),
+    #     ('Access-Control-Max-Age', 60 * 60 * 24 * 20),
+    # ],
+    # another optional settings
+    # "url_prefix": "swaggerdocs",
+    # "subdomain": "docs.mysite,com",
+    # specs are also optional if not set /spec is registered exposing all views
+    "specs": [
+        {
+            "version": "0.0.1",
+            "title": "Reservation Service",
+            "endpoint": 'v1_spec',
+            "route": '/v1/spec',
+            "description": 'This work implements a generic reservation service. It was developed as part of '
+                           'a subject called "service Engineering" in University of Aveiro'
+
+            # rule_filter is optional
+            # it is a callable to filter the views to extract
+
+            # "rule_filter": lambda rule: rule.endpoint.startswith(
+            #    'should_be_v1_only'
+            # )
+        }
+    ]
+}
+
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE
 db = SQLAlchemy(app)
 
 api = Api(app)
+Swagger(app)
 
 
 # ------------------------------------------------  Database definition  ---------------------------------------------
@@ -85,30 +121,45 @@ class Stock(db.Model):
 
 
 class AllReservations(Resource):
-    """
-        [GET] Returns a set of all reservations on the service in a JSON format.
-        JSON sent:
-        {
-            "allreservations": {
-                "0": [
-                    {
-                        "clientID": 9,
-                        "quantity": 3,
-                        "timestamp": 1448733600
-                    }
-                ],
-                "1": [
-                    {
-                        "clientID": 9,
-                        "quantity": 1,
-                        "timestamp": 1448913600
-                    }
-                ]
-            }
-        }
-    """
 
     def get(self):
+        """
+        Returns a set of all reservations on the service in a JSON format.
+        ---
+        tags:
+            - Reservations API
+        responses:
+            200:
+                description: Array with all reservations made.
+                schema:
+                    type: object
+                    required:
+                        - allreservations
+                    properties:
+                     allreservations:
+                          type: object
+                          required:
+                            - <item_id>
+                          properties:
+                            <item_id>:
+                              type: array
+                              items:
+                                  type: object
+                                  required:
+                                    - clienteID
+                                    - quantity
+                                    - timestamp
+                                  properties:
+                                    clienteID:
+                                      type: integer
+                                      description: ID of the client that made the reservation.
+                                    quantity:
+                                      type: integer
+                                      description: Quantity reserved by the user.
+                                    timestamp:
+                                      type: integer
+                                      description: The date for when the reservation is set.
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         all_reser = Reservations.query.all()
@@ -127,19 +178,63 @@ class AllReservations(Resource):
 
 
 class DoReservation(Resource):
-    """
-        [POST] Set a new reservation on the service and returns the ID assigned to that reservations.
-        JSON received:
-        {
-            "itemID": 8,
-            "quantity": 2,
-            "clientID": 12,
-            "username": "dave1",
-            "timestamp": 1445556339
-        }
-    """
 
     def post(self):
+        """
+        Set a new reservation on the service and returns the ID assigned to that reservations.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: body
+              name: reservation
+              schema:
+                type: object
+                required:
+                  - itemID
+                  - quantity
+                  - clientID
+                  - username
+                  - timestamp
+                properties:
+                  itemID:
+                    type: integer
+                    description: item ID for identification
+                  quantity:
+                    type: integer
+                    description: quantity to be reserved
+                  clientID:
+                    type: integer
+                    description: ID of the client that wants to make the reservation
+                  username:
+                    type: string
+                    description: username of the user that wants to make the reservation
+                  timestamp:
+                    type: integer
+                    description: the date tha the reservations is scheduled.
+
+        responses:
+            200:
+              description: Returns the reservation ID that was generated.
+              schema:
+                type: object
+                required:
+                    - reservationID
+                properties:
+                  reservationID:
+                    type: integer
+                    description: The reservation ID generated
+            401:
+              description: Invalid itemID
+              schema:
+                type: string
+
+            402:
+              description: Invalid stock
+              schema:
+                type: string
+
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         in_data = request.get_json(force=True)
@@ -182,16 +277,57 @@ class DoReservation(Resource):
 
 
 class UpdateReservation(Resource):
-    """
-        [POST] Updates the info related to a reservation. Only updates the parameters received that is nonzero.
-        JSON received:
-        {
-            "quantity": 2,
-            "timestamp": 1445556339
-        }
-    """
 
     def post(self, reservation_id):
+        """
+        Updates the date or the quantity of a reservation with a give reservation ID.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: reservationID
+              description: reservation ID of the reservation needs to be updated
+              required: true
+              type: integer
+
+            - in: body
+              name: update parameters
+              schema:
+                type: object
+                required:
+                  - quantity
+                  - timestamp
+                properties:
+                  quantity:
+                    type: integer
+                    description: If the quantity needs to be updates this value must be != 0
+                    default: 0
+                  timestamp:
+                    type: integer
+                    description: If the date needs to be updates this value must be != 0
+                    default: 0
+
+        responses:
+            200:
+                description: 200 OK
+                schema:
+                    type: string
+            401:
+                description: Invalid parameter value
+                schema:
+                    type: string
+
+            402:
+               description: Reservation ID is not valid
+               schema:
+                    type: string
+
+            403:
+               description: Invalid stock
+               schema:
+                    type: string
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         in_data = request.get_json(force=True)
@@ -254,6 +390,30 @@ class CancelReservation(Resource):
     """
 
     def get(self, reservation_id):
+        """
+        Deletes a reservation with a given reservation ID.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: reservationID
+              description: The reservation ID belonging to reservation to be canceled.
+              required: true
+              type: integer
+
+        responses:
+            200:
+                description: 200 OK
+                schema:
+                    type: string
+
+            401:
+                description: Reservation ID is not valid
+                schema:
+                    type: string
+
+        """
         reservation = Reservations.query.filter_by(reservationID=reservation_id).first()
         if reservation is None:
             return "401 Reservation ID is not valid"
@@ -275,34 +435,65 @@ class CancelReservation(Resource):
 
 
 class ReplenishStock(Resource):
-    """
-        [POST] Inserts new stock in the database.
-        JSON received:
-        {
-            "info": [
-                {
-                    "username": "dave1",
-                    "providerID": 1
-                }
-            ],
-            "menu": [
-                {
-                    "itemID": 8,
-                    "price": 10,
-                    "name": "peixe",
-                    "quantity": 20
-                },
-                {
-                    "itemID": 9,
-                    "price": 10,
-                    "name": "carne",
-                    "quantity": 20
-                }
-            ]
-        }
-    """
 
     def post(self):
+        """
+        Inserts new stock in the database.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: body
+              name: All the stock to be inserted
+              schema:
+                type: object
+                required:
+                  - info
+                  - menu
+                properties:
+                  info:
+                    type: array
+                    items:
+                        type: object
+                        required:
+                            - username
+                            - providerID
+                        properties:
+                            username:
+                                type: string
+                                description: The username of the provider that inserted the stock
+                            providerID:
+                                type: integer
+                                description: The ID of the provider that belongs this stock
+                  menu:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - itemID
+                        - price
+                        - name
+                        - quantity
+                      properties:
+                        itemID:
+                            type: integer
+                            description: item ID for identification
+                        price:
+                            type: integer
+                            description: the price of the product
+                        name:
+                            type: string
+                            description: the name of the product
+                        quantity:
+                            type: integer
+                            description: The quantity of the product available
+        responses:
+            200:
+                description: 200 OK
+                schema:
+                    type: string
+
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         in_data = request.get_json(force=True)
@@ -328,26 +519,40 @@ class ReplenishStock(Resource):
 
 
 class AllStock(Resource):
-    """
-        [GET] Returns all the stock available on the service.
-        JSON sent:
-        {
-            "allstock": [
-                {
-                    "itemID": 0,
-                    "itemName": "pratodeteste",
-                    "itemQuantity": 12
-                },
-                {
-                    "itemID": 1,
-                    "itemName": "pratodeteste222",
-                    "itemQuantity": 17
-                }
-            ]
-        }
-    """
 
     def get(self):
+        """
+        Returns all the stock available on the service.
+        ---
+        tags:
+            - Reservations API
+        responses:
+            200:
+                description: Returns all the stock available on the service.
+                schema:
+                    type: object
+                    required:
+                        - allstock
+                    properties:
+                        allstock:
+                            type: array
+                            items:
+                                type: object
+                                required:
+                                    - itemID
+                                    - itemName
+                                    - itemQuantity
+                                properties:
+                                    itemID:
+                                      type: integer
+                                      description: The id of the stock
+                                    itemName:
+                                      type: string
+                                      description: The name of the product in stock
+                                    itemQuantity:
+                                      type: integer
+                                      description: The quantity available for reservation
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         all_stock = Stock.query.all()
@@ -362,32 +567,58 @@ class AllStock(Resource):
 
 
 class UserReservations(Resource):
-    """
-        [GET] Returns all the reservations made by a specific user.
-        JSON sent:
-        {
-            "reservations": [
-                {
-                    "reservationID": 12
-                    "providerID": 1232
-                    "itemID": 8,
-                    "itemName": "peixe",
-                    "timestamp": 123452356343,
-                    "quantity": 2
-                },
-                {
-                    "reservationID": 123
-                    "providerID": 2355
-                    "itemID": 8,
-                    "itemName": "peixe",
-                    "timestamp": 123452356343,
-                    "quantity": 2
-                }
-            ]
-        }
-    """
 
     def get(self, username):
+        """
+        Returns all the reservations made by a specific user.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: username
+              description: The username of the user to list his reservations
+              required: true
+              type: string
+        responses:
+            200:
+                description: Returns all the reservations made by user with the given username.
+                schema:
+                    type: object
+                    required:
+                        - reservations
+                    properties:
+                        reservations:
+                            type: array
+                            items:
+                                type: object
+                                required:
+                                    - reservationID
+                                    - providerID
+                                    - itemID
+                                    - itemName
+                                    - timestamp
+                                    - quantity
+                                properties:
+                                    reservationID:
+                                        type: integer
+                                        description: The ID of the reservation made by the user
+                                    providerID:
+                                        type: integer
+                                        description: The ID of the provider that will attend the request made by the user
+                                    itemID:
+                                        type: integer
+                                        description: The ID of the product in stock that was reserved
+                                    itemName:
+                                        type: string
+                                        description: The name of the item reserved
+                                    timestamp:
+                                        type: integer
+                                        description: The date for when the reservation is made
+                                    quantity:
+                                        type: integer
+                                        description: The quantity reserved for this item
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         l2 = []
@@ -406,26 +637,46 @@ class UserReservations(Resource):
 
 
 class ProviderStock(Resource):
-    """
-        [GET] Returns all the stock available from one provider.
-        JSON sent:
-        {
-            "stock": [
-                {
-                    "itemID": 8,
-                    "itemName": "peixe",
-                    "itemQuantity": 18
-                },
-                {
-                    "itemID": 9,
-                    "itemName": "carne",
-                    "itemQuantity": 20
-                }
-            ]
-        }
-    """
 
     def get(self, provider_id):
+        """
+        Returns all the stock available from one provider.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: provider_id
+              description: The ID of the provider to list all the available stock
+              required: true
+              type: integer
+        responses:
+            200:
+                description: Returns all the current stock for the items belonging to a specific provider
+                schema:
+                    type: object
+                    required:
+                        - stock
+                    properties:
+                        allstock:
+                            type: array
+                            items:
+                                type: object
+                                required:
+                                    - itemID
+                                    - itemName
+                                    - itemQuantity
+                                properties:
+                                    itemID:
+                                        type: integer
+                                        description: The ID of the product in stock belonging to the provider ID received
+                                    itemName:
+                                        type: string
+                                        description: The item name
+                                    itemQuantity:
+                                        type: integer
+                                        description: The item quantity available in the system
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         l2 = []
@@ -455,6 +706,44 @@ class ProviderReservated(Resource):
     """
 
     def get(self, provider_id):
+        """
+        Returns all the future reservations related to a particular provider.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: provider_id
+              description: The ID of the provider to list all the item currently reserved
+              required: true
+              type: integer
+        responses:
+            200:
+                description: Returns a list with all the items reserved form now until the future for the given provider ID
+                schema:
+                    type: object
+                    required:
+                        - reservated
+                    properties:
+                        reservated:
+                            type: array
+                            items:
+                                type: object
+                                required:
+                                    - itemID
+                                    - itemName
+                                    - quantity
+                                properties:
+                                    itemID:
+                                        type: integer
+                                        description: The ID of the product in stock belonging to the provider ID received
+                                    itemName:
+                                        type: string
+                                        description: The item name
+                                    quantity:
+                                        type: integer
+                                        description: The reserved quantity
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         stock_provider = Stock.query.filter_by(providerID=provider_id).all()
@@ -475,19 +764,38 @@ class ProviderReservated(Resource):
 
 
 class ProviderReservatedTF(Resource):
-    """
-        [GET] Returns the total reservation that one provider has in the future.
-        JSON sent:
-        {
-            "reservated": [
-                {
-                    "total": 0
-                }
-            ]
-        }
-    """
 
     def get(self, provider_id):
+        """
+        Returns the total reservation that one provider has in the future.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: provider_id
+              description: The ID of the provider to get the sum o all reserved stock
+              required: true
+              type: integer
+        responses:
+            200:
+                description: Returns the sum of all the stock reserved
+                schema:
+                    type: object
+                    required:
+                        - reservated
+                    properties:
+                        reservated:
+                            type: array
+                            items:
+                                type: object
+                                required:
+                                    - total
+                                properties:
+                                    total:
+                                        type: integer
+                                        description: The total of rthe stock of the provider reserved
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         stock_provider = Stock.query.filter_by(providerID=provider_id).all()
@@ -506,60 +814,68 @@ class ProviderReservatedTF(Resource):
 
 
 class ProviderReservatedTFDay(Resource):
-    """
-        [POST] Returns all the reservations from one provider for one specific day.
-        JSON received:
-        {
-            "date": "26/11/2015"
-        }
-
-        JSON sent:
-        {
-            "reservated" : [
-            {
-                "itemID": 1,
-                "reservations" : [
-                    {
-                        "itemID": 0,
-                        "itemName": "dsf",
-                        "quantity": 2,
-                        "timestamp": 123342512343,
-                        "username": "mmf"
-                    },
-                    {
-                        "itemID": 0,
-                        "itemName": "dsf",
-                        "quantity": 2,
-                        "timestamp": 12334251233,
-                        "username": "mmf"
-                    }
-                ]
-            },
-            {
-                "itemID": 2,
-                "reservations" : [
-                    {
-                        "itemID": 0,
-                        "itemName": "dsf",
-                        "quantity": 2,
-                        "timestamp": 123342512343,
-                        "username": "mmf"
-                    },
-                    {
-                        "itemID": 0,
-                        "itemName": "dsf",
-                        "quantity": 2,
-                        "timestamp": 12334251233,
-                        "username": "mmf"
-                    }
-                ]
-            }
-
-            ]
-        }
-    """
 
     def post(self, provider_id):
+        """
+        Returns all the reservations from one provider for one specific day.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: provider_id
+              description: The ID of the provider
+              required: true
+              type: integer
+            - in: body
+              name: All the stock to be inserted
+              schema:
+                type: object
+                required:
+                    - date
+                properties:
+                    date:
+                        type: string
+                        description: The date for the day to list the reserves
+                        default: 'dd/mm/yy'
+        responses:
+            200:
+                description: Returns all the reservations for the given provider ID for a specific day
+                schema:
+                    type: object
+                    required:
+                        - reservated
+                    properties:
+                        reservated:
+                            type: array
+                            items:
+                                type: object
+                                required:
+                                    - itemID
+                                    - reservations
+                                properties:
+                                    itemID:
+                                        type: integer
+                                        description: The item ID of the item
+                                    reservations:
+                                        type: array
+                                        items:
+                                            type: object
+                                            required:
+                                                - quantity
+                                                - timestamp
+                                                - username
+                                            properties:
+                                                quantity:
+                                                    type: integer
+                                                    description: The quantity reserved by the user
+                                                timestamp:
+                                                    type: integer
+                                                    description: The date for when the reservation was made
+                                                username:
+                                                    type: string
+                                                    description: The username of the user that made the reservation
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         in_data = request.get_json(force=True)
@@ -591,9 +907,30 @@ class GetCaldavFile(Resource):
     """
 
     def get(self, reservation_id):
+        """
+        Returns a file related to a reservation in iCal format.
+        ---
+        tags:
+            - Reservations API
+        parameters:
+            - in: path
+              name: reservation_id
+              description: The ID of the reservation to get the iCla file
+              required: true
+              type: integer
+        response:
+            200:
+                description: Returns a iCal file
+                type: String
+            401:
+                description: Invalid reservation ID
+                type: string
+        """
         if database_exists(DATABASE) is False:
             db.create_all()
         reservation = Reservations.query.filter_by(reservationID=reservation_id).first()
+        if reservation is None:
+            return '401 Invalid reservation ID'
         stock = Stock.query.filter_by(itemID=reservation.itemID).first()
 
         cal = Calendar()

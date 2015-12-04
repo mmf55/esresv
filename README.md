@@ -1,2 +1,2 @@
 # esresv
-Trabalho realizado no âmbito da cadeira "Engenharia de Serviços". Implementa um serviço de reservas genérico.
+This work implements a generic reservation service. It was developed as part of a subject called "service Engineering" in University of Aveiro.
